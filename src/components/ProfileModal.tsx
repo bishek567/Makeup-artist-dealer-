@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Smartphone, Mail, User, CheckCircle2, Timer, Globe, X, Lock, RefreshCw, Eye } from 'lucide-react';
+import { Sparkles, Smartphone, Mail, User, CheckCircle2, Timer, Globe, X, Lock, RefreshCw, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface ProfileModalProps {
   onClose: () => void;
@@ -34,6 +35,12 @@ const COUNTRIES: Country[] = [
 export default function ProfileModal({ onClose, onVerificationSuccess, notice }: ProfileModalProps) {
   // Saved profile cache state
   const [savedProfile, setSavedProfile] = useState<any>(null);
+
+  // Supabase Authentication options
+  const [authMethod, setAuthMethod] = useState<'otp' | 'supabase'>('supabase');
+  const [supabaseAuthAction, setSupabaseAuthAction] = useState<'signin' | 'signup'>('signup');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   // Form input states
   const [name, setName] = useState('');
@@ -203,6 +210,90 @@ export default function ProfileModal({ onClose, onVerificationSuccess, notice }:
     }
   };
 
+  const handleSupabaseAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !email.includes('@')) {
+      setErrorStatus('Please enter a valid luxury email address.');
+      return;
+    }
+    if (password.length < 6) {
+      setErrorStatus('Password must be at least 6 characters.');
+      return;
+    }
+    if (supabaseAuthAction === 'signup' && !name.trim()) {
+      setErrorStatus('Please enter your gorgeous Name for VIP registration.');
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorStatus(null);
+    setSuccessMsg(null);
+
+    try {
+      let authUserEmail = email.trim();
+      let authUserId = '';
+
+      if (supabaseAuthAction === 'signup') {
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: authUserEmail,
+          password: password,
+          options: {
+            data: {
+              full_name: name.trim(),
+            }
+          }
+        });
+
+        if (authError) {
+          throw new Error(authError.message);
+        }
+
+        authUserId = authData?.user?.id || '';
+      } else {
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: authUserEmail,
+          password: password,
+        });
+
+        if (authError) {
+          throw new Error(authError.message);
+        }
+
+        authUserId = authData?.user?.id || '';
+      }
+
+      // Unified sync callback to register corresponding VIP customer profile in Local+Cloud db tables
+      const numbersOnly = phone.replace(/\D/g, '');
+      const syncRes = await fetch('/api/profiles/supabase-auth-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim() || undefined,
+          email: authUserEmail,
+          phone: numbersOnly || undefined,
+          countryCode: selectedCountry?.code || undefined,
+          countryName: selectedCountry?.name || undefined,
+          countryFlag: selectedCountry?.flag || undefined,
+          supabaseId: authUserId
+        })
+      });
+
+      const syncData = await syncRes.json();
+      if (!syncRes.ok) {
+        throw new Error(syncData.error || 'Failed to sync your corresponding VIP profile with server database.');
+      }
+
+      localStorage.setItem('beaution_profile', JSON.stringify(syncData.profile));
+      setSavedProfile(syncData.profile);
+      setSuccessMsg(`Welcome! Authenticated and registered via live Supabase: ${syncData.profile.name}`);
+      onVerificationSuccess(syncData.profile);
+    } catch (err: any) {
+      setErrorStatus(err.message || 'Supabase authentication failed. Please double check credentials.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('beaution_profile');
     setSavedProfile(null);
@@ -350,32 +441,98 @@ export default function ProfileModal({ onClose, onVerificationSuccess, notice }:
                 </motion.div>
               ) : (
                 /* VIEW 2: SPLIT OTP DISPATCH OR SUBMISSION FORM */
-                <div className="space-y-4">
-                  {!otpSent ? (
-                    /* SUB-VIEW 2A: REGISTRATION BASIC FORM */
-                    <form onSubmit={handleSendOtp} className="space-y-4">
-                      
-                      {/* Name input */}
-                      <div className="space-y-1.5">
-                        <label className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold block">
-                          Your Name
-                        </label>
-                        <div className="relative">
-                          <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
-                            <User className="h-4 w-4" />
-                          </span>
-                          <input
-                            type="text"
-                            required
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="Enter your beautiful full name..."
-                            className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-rose-100 dark:border-zinc-800 bg-rose-50/20 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-amber-300 text-zinc-800 dark:text-zinc-200"
-                          />
-                        </div>
+                <div className="space-y-6">
+                  {/* Auth Switcher Tab */}
+                  <div className="flex border-b border-zinc-100 dark:border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMethod('supabase');
+                        setErrorStatus(null);
+                        setSuccessMsg(null);
+                      }}
+                      className={`flex-1 pb-3 text-xs font-bold uppercase tracking-wider text-center border-b-2 transition-all cursor-pointer ${
+                        authMethod === 'supabase'
+                          ? 'border-pink-500 text-pink-600 dark:text-pink-400 font-serif'
+                          : 'border-transparent text-zinc-400 hover:text-zinc-650'
+                      }`}
+                    >
+                      🛡️ Supabase Account Auth
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMethod('otp');
+                        setErrorStatus(null);
+                        setSuccessMsg(null);
+                      }}
+                      className={`flex-1 pb-3 text-xs font-bold uppercase tracking-wider text-center border-b-2 transition-all cursor-pointer ${
+                        authMethod === 'otp'
+                          ? 'border-pink-500 text-pink-600 dark:text-pink-400 font-serif'
+                          : 'border-transparent text-zinc-400 hover:text-zinc-655'
+                      }`}
+                    >
+                      💬 Simulated OTP SMS
+                    </button>
+                  </div>
+
+                  {authMethod === 'supabase' ? (
+                    /* SUB-VIEW A: SUPABASE SECURE AUTHENTICATION LINK */
+                    <form onSubmit={handleSupabaseAuth} className="space-y-4">
+                      <div className="flex justify-center p-1 bg-zinc-100 dark:bg-zinc-950 rounded-xl space-x-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSupabaseAuthAction('signup');
+                            setErrorStatus(null);
+                            setSuccessMsg(null);
+                          }}
+                          className={`flex-1 py-1.5 text-center rounded-lg text-xs font-bold transition-all ${
+                            supabaseAuthAction === 'signup'
+                              ? 'bg-white dark:bg-zinc-900 text-pink-600 dark:text-white shadow-sm'
+                              : 'text-zinc-400 hover:text-zinc-600'
+                          }`}
+                        >
+                          Sign Up VIP Club
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSupabaseAuthAction('signin');
+                            setErrorStatus(null);
+                            setSuccessMsg(null);
+                          }}
+                          className={`flex-1 py-1.5 text-center rounded-lg text-xs font-bold transition-all ${
+                            supabaseAuthAction === 'signin'
+                              ? 'bg-white dark:bg-zinc-900 text-pink-600 dark:text-white shadow-sm'
+                              : 'text-zinc-400 hover:text-zinc-600'
+                          }`}
+                        >
+                          Sign In Existing Profile
+                        </button>
                       </div>
 
-                      {/* Email Input */}
+                      {supabaseAuthAction === 'signup' && (
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold block">
+                            Full Name
+                          </label>
+                          <div className="relative">
+                            <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
+                              <User className="h-4 w-4" />
+                            </span>
+                            <input
+                              type="text"
+                              required
+                              value={name}
+                              onChange={(e) => setName(e.target.value)}
+                              placeholder="Enter your beautiful full name..."
+                              className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-rose-100 dark:border-zinc-800 bg-rose-50/20 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-amber-300 text-zinc-800 dark:text-zinc-200"
+                            />
+                          </div>
+                        </div>
+                      )}
+
                       <div className="space-y-1.5">
                         <label className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold block">
                           Email Address
@@ -389,170 +546,324 @@ export default function ProfileModal({ onClose, onVerificationSuccess, notice }:
                             required
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            placeholder="Enter your email address..."
+                            placeholder="Enter your login email address..."
                             className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-rose-100 dark:border-zinc-800 bg-rose-50/20 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-amber-300 text-zinc-800 dark:text-zinc-200"
                           />
                         </div>
                       </div>
 
-                      {/* Country and Phone Compound Grid */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        
-                        {/* Selector Column */}
-                        <div className="relative md:col-span-1 space-y-1.5">
-                          <label className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold block">
-                            Country
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => setShowCountryDropdown(!showCountryDropdown)}
-                            className="w-full flex items-center justify-between px-3 py-2 text-xs rounded-xl border border-rose-100 dark:border-zinc-800 bg-rose-50/20 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-amber-300 text-zinc-800 dark:text-zinc-200 text-left select-none cursor-pointer"
-                          >
-                            <span className="flex items-center space-x-2">
-                              <span>{selectedCountry.flag}</span>
-                              <span className="font-serif">{selectedCountry.name}</span>
-                              <span className="text-[10px] text-zinc-400 font-mono">{selectedCountry.code}</span>
-                            </span>
-                            <Globe className="h-3 w-3 text-zinc-400" />
-                          </button>
-
-                          {/* Country Dropdown lists */}
-                          {showCountryDropdown && (
-                            <div className="absolute left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl shadow-xl py-1">
-                              {COUNTRIES.map((cnt) => (
-                                <button
-                                  key={cnt.name}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedCountry(cnt);
-                                    setShowCountryDropdown(false);
-                                  }}
-                                  className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs hover:bg-rose-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors"
-                                >
-                                  <span>{cnt.flag}</span>
-                                  <span className="font-bold flex-1 text-left">{cnt.name}</span>
-                                  <span className="text-[10px] text-zinc-400 font-mono">{cnt.code}</span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Phone input component */}
-                        <div className="md:col-span-2 space-y-1.5">
-                          <label className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold block">
-                            Phone Number
-                          </label>
-                          <div className="relative">
-                            <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400 font-mono text-xs">
-                              {selectedCountry.code}
-                            </span>
-                            <input
-                              type="tel"
-                              required
-                              value={phone}
-                              onChange={(e) => setPhone(e.target.value)}
-                              placeholder={selectedCountry.placeholder}
-                              className="w-full pl-12 pr-4 py-2 text-xs rounded-xl border border-rose-100 dark:border-zinc-800 bg-rose-50/20 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-amber-300 text-zinc-800 dark:text-zinc-200 font-mono"
-                            />
-                          </div>
-                        </div>
-
-                      </div>
-
-                      {/* Verify code generation trigger CTA */}
-                      <button
-                        type="submit"
-                        disabled={isLoading}
-                        className="w-full py-2.5 rounded-full bg-gradient-to-r from-pink-500 to-amber-500 text-white font-medium text-xs uppercase tracking-wider hover:opacity-95 shadow-md flex items-center justify-center space-x-2 transition-all hover:scale-[1.01] cursor-pointer disabled:opacity-50"
-                      >
-                        {isLoading && <RefreshCw className="h-3 w-3 animate-spin" />}
-                        <span>Send OTP SMS</span>
-                      </button>
-
-                    </form>
-                  ) : (
-                    /* SUB-VIEW 2B: OTP VALIDATION FORM SCREEN */
-                    <form onSubmit={handleVerifyOtp} className="space-y-4">
-                      <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/10 text-xs text-zinc-600 dark:text-zinc-400 space-y-1 leading-relaxed">
-                        <p>
-                          We sent a secure 6-digit verification code via SMS to:
-                        </p>
-                        <p className="font-mono text-zinc-800 dark:text-zinc-200 font-bold">
-                          {selectedCountry.flag} {selectedCountry.name} ({selectedCountry.code}) {phone}
-                        </p>
-                      </div>
-
                       <div className="space-y-1.5">
-                        <div className="flex justify-between items-center">
-                          <label className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold block">
-                            6-Digit OTP Code
-                          </label>
-                          <span className="text-[10px] text-zinc-400 font-medium flex items-center space-x-1">
-                            <Timer className="h-3  w-3 text-pink-500 shrink-0" />
-                            <span>Expires in:</span>
-                            <span className="font-mono text-pink-500 font-bold">{formatTimer(secondsRemaining)}</span>
-                          </span>
-                        </div>
-
+                        <label className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold block">
+                          Password
+                        </label>
                         <div className="relative">
                           <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
                             <Lock className="h-4 w-4" />
                           </span>
                           <input
-                            type="text"
+                            type={showPassword ? 'text' : 'password'}
                             required
-                            maxLength={6}
-                            value={otp}
-                            onChange={(e) => setOtp(e.target.value)}
-                            placeholder="Enter the 6-digit activation code..."
-                            className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-rose-100 dark:border-zinc-800 bg-rose-50/20 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-amber-300 tracking-widest text-zinc-800 dark:text-zinc-200 text-center font-bold font-mono"
+                            minLength={6}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="Type a secure account password..."
+                            className="w-full pl-9 pr-10 py-2 text-xs rounded-xl border border-rose-100 dark:border-zinc-800 bg-rose-50/20 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-amber-300 text-zinc-800 dark:text-zinc-200"
                           />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-zinc-650 cursor-pointer"
+                          >
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
                         </div>
                       </div>
 
-                      {otpPreview && (
-                        <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
-                          <span className="text-[10px] text-zinc-500">Visual assistance (Sandbox preview):</span>
-                          <span className="font-mono bg-pink-500/10 text-pink-600 py-0.5 px-2 rounded text-xs font-bold">{otpPreview}</span>
+                      {supabaseAuthAction === 'signup' && (
+                        /* Country and Phone Compound Grid for VIP Account contact details */
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          
+                          {/* Selector Column */}
+                          <div className="relative md:col-span-1 space-y-1.5">
+                            <label className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold block">
+                              Country
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setShowCountryDropdown(!showCountryDropdown)}
+                              className="w-full flex items-center justify-between px-3 py-2 text-xs rounded-xl border border-rose-100 dark:border-zinc-800 bg-rose-50/20 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-amber-300 text-zinc-800 dark:text-zinc-200 text-left select-none cursor-pointer"
+                            >
+                              <span className="flex items-center space-x-2">
+                                <span>{selectedCountry.flag}</span>
+                                <span className="font-serif text-xs">{selectedCountry.name}</span>
+                              </span>
+                              <Globe className="h-3 w-3 text-zinc-400" />
+                            </button>
+
+                            {/* Country Dropdown lists */}
+                            {showCountryDropdown && (
+                              <div className="absolute left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl shadow-xl py-1">
+                                {COUNTRIES.map((cnt) => (
+                                  <button
+                                    key={cnt.name}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedCountry(cnt);
+                                      setShowCountryDropdown(false);
+                                    }}
+                                    className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs hover:bg-rose-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
+                                  >
+                                    <span>{cnt.flag}</span>
+                                    <span className="font-bold flex-1 text-left">{cnt.name}</span>
+                                    <span className="text-[10px] text-zinc-405 font-mono">{cnt.code}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Phone input component */}
+                          <div className="md:col-span-2 space-y-1.5">
+                            <label className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold block">
+                              Phone Number
+                            </label>
+                            <div className="relative">
+                              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400 font-mono text-xs font-bold">
+                                {selectedCountry.code}
+                              </span>
+                              <input
+                                type="tel"
+                                required
+                                value={phone}
+                                onChange={(e) => setPhone(e.target.value)}
+                                placeholder={selectedCountry.placeholder}
+                                className="w-full pl-12 pr-4 py-2 text-xs rounded-xl border border-rose-100 dark:border-zinc-800 bg-rose-50/20 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-amber-300 text-zinc-800 dark:text-zinc-200 font-mono"
+                              />
+                            </div>
+                          </div>
                         </div>
                       )}
 
-                      <div className="grid grid-cols-3 gap-3">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOtpSent(false);
-                            setSuccessMsg(null);
-                            setErrorStatus(null);
-                            setOtp('');
-                          }}
-                          className="col-span-1 py-2.5 rounded-full border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 text-xs font-bold uppercase tracking-wider transition-all line-clamp-1 truncate"
-                        >
-                          Change Number
-                        </button>
-
-                        <button
-                          type="submit"
-                          disabled={isLoading}
-                          className="col-span-2 py-2.5 rounded-full bg-gradient-to-r from-pink-500 to-amber-500 text-white font-medium text-xs uppercase tracking-wider hover:opacity-95 shadow-md flex items-center justify-center space-x-2 transition-all hover:scale-[1.01] cursor-pointer disabled:opacity-50"
-                        >
-                          {isLoading && <RefreshCw className="h-3 w-3 animate-spin" />}
-                          <span>Verify & Register Profile</span>
-                        </button>
-                      </div>
-
-                      <div className="text-center">
-                        <button
-                          type="button"
-                          onClick={handleSendOtp}
-                          disabled={secondsRemaining > 240}
-                          className="text-[10px] text-pink-500 hover:underline disabled:text-zinc-400 text-center mx-auto"
-                        >
-                          Didn't receive the SMS? Send Code Again {secondsRemaining > 240 ? `(wait ${secondsRemaining - 240}s)` : ''}
-                        </button>
-                      </div>
+                      <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="w-full py-2.5 rounded-full bg-gradient-to-r from-pink-500 to-amber-500 text-white font-medium text-xs uppercase tracking-wider hover:opacity-95 shadow-md flex items-center justify-center space-x-2 transition-all hover:scale-[1.01] cursor-pointer disabled:opacity-50 font-bold"
+                      >
+                        {isLoading && <RefreshCw className="h-3 w-3 animate-spin" />}
+                        <span>
+                          {supabaseAuthAction === 'signup'
+                            ? 'Register & Sync VIP Profile'
+                            : 'Sign In & Query VIP Profile'}
+                        </span>
+                      </button>
                     </form>
+                  ) : (
+                    /* SUB-VIEW B: SIMULATED MOBILE OTP VERIFICATION FLOW */
+                    <div className="space-y-4">
+                      {!otpSent ? (
+                        /* REGISTRATION BASIC FORM */
+                        <form onSubmit={handleSendOtp} className="space-y-4">
+                          
+                          {/* Name input */}
+                          <div className="space-y-1.5">
+                            <label className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold block">
+                              Your Name
+                            </label>
+                            <div className="relative">
+                              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
+                                <User className="h-4 w-4" />
+                              </span>
+                              <input
+                                type="text"
+                                required
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                placeholder="Enter your beautiful full name..."
+                                className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-rose-100 dark:border-zinc-800 bg-rose-50/20 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-amber-300 text-zinc-800 dark:text-zinc-200"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Email Input */}
+                          <div className="space-y-1.5">
+                            <label className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold block">
+                              Email Address
+                            </label>
+                            <div className="relative">
+                              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
+                                <Mail className="h-4 w-4" />
+                              </span>
+                              <input
+                                type="email"
+                                required
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="Enter your email address..."
+                                className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-rose-100 dark:border-zinc-800 bg-rose-50/20 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-amber-300 text-zinc-800 dark:text-zinc-200"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Country and Phone Compound Grid */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            
+                            {/* Selector Column */}
+                            <div className="relative md:col-span-1 space-y-1.5">
+                              <label className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold block">
+                                Country
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => setShowCountryDropdown(!showCountryDropdown)}
+                                className="w-full flex items-center justify-between px-3 py-2 text-xs rounded-xl border border-rose-100 dark:border-zinc-800 bg-rose-50/20 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-amber-300 text-zinc-800 dark:text-zinc-200 text-left select-none cursor-pointer"
+                              >
+                                <span className="flex items-center space-x-2">
+                                  <span>{selectedCountry.flag}</span>
+                                  <span className="font-serif text-xs">{selectedCountry.name}</span>
+                                  <span className="text-[10px] text-zinc-404 font-mono">{selectedCountry.code}</span>
+                                </span>
+                                <Globe className="h-3 w-3 text-zinc-400" />
+                              </button>
+
+                              {/* Country Dropdown lists */}
+                              {showCountryDropdown && (
+                                <div className="absolute left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl shadow-xl py-1">
+                                  {COUNTRIES.map((cnt) => (
+                                    <button
+                                      key={cnt.name}
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedCountry(cnt);
+                                        setShowCountryDropdown(false);
+                                      }}
+                                      className="w-full flex items-center space-x-2 px-3 py-1.5 text-xs hover:bg-rose-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-350 transition-colors cursor-pointer"
+                                    >
+                                      <span>{cnt.flag}</span>
+                                      <span className="font-bold flex-1 text-left">{cnt.name}</span>
+                                      <span className="text-[10px] text-zinc-406 font-mono">{cnt.code}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Phone input component */}
+                            <div className="md:col-span-2 space-y-1.5">
+                              <label className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold block">
+                                Phone Number
+                              </label>
+                              <div className="relative">
+                                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400 font-mono text-xs font-bold">
+                                  {selectedCountry.code}
+                                </span>
+                                <input
+                                  type="tel"
+                                  required
+                                  value={phone}
+                                  onChange={(e) => setPhone(e.target.value)}
+                                  placeholder={selectedCountry.placeholder}
+                                  className="w-full pl-12 pr-4 py-2 text-xs rounded-xl border border-rose-100 dark:border-zinc-800 bg-rose-50/20 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-amber-300 text-zinc-800 dark:text-zinc-200 font-mono"
+                                />
+                              </div>
+                            </div>
+
+                          </div>
+
+                          {/* Verify code generation trigger CTA */}
+                          <button
+                            type="submit"
+                            disabled={isLoading}
+                            className="w-full py-2.5 rounded-full bg-gradient-to-r from-pink-500 to-amber-500 text-white font-medium text-xs uppercase tracking-wider hover:opacity-95 shadow-md flex items-center justify-center space-x-2 transition-all hover:scale-[1.01] cursor-pointer disabled:opacity-50"
+                          >
+                            {isLoading && <RefreshCw className="h-3 w-3 animate-spin" />}
+                            <span>Send OTP SMS</span>
+                          </button>
+
+                        </form>
+                      ) : (
+                        /* OTP VALIDATION FORM SCREEN */
+                        <form onSubmit={handleVerifyOtp} className="space-y-4">
+                          <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/10 text-xs text-zinc-650 dark:text-zinc-400 space-y-1 leading-relaxed">
+                            <p>
+                              We sent a secure 6-digit verification code via SMS to:
+                            </p>
+                            <p className="font-mono text-zinc-800 dark:text-zinc-200 font-bold">
+                              {selectedCountry.flag} {selectedCountry.name} ({selectedCountry.code}) {phone}
+                            </p>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between items-center">
+                              <label className="text-[11px] uppercase tracking-widest text-zinc-400 font-bold block">
+                                6-Digit OTP Code
+                              </label>
+                              <span className="text-[10px] text-zinc-400 font-medium flex items-center space-x-1">
+                                <Timer className="h-3  w-3 text-pink-500 shrink-0" />
+                                <span>Expires in:</span>
+                                <span className="font-mono text-pink-500 font-bold">{formatTimer(secondsRemaining)}</span>
+                              </span>
+                            </div>
+
+                            <div className="relative">
+                              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
+                                <Lock className="h-4 w-4" />
+                              </span>
+                              <input
+                                type="text"
+                                required
+                                maxLength={6}
+                                value={otp}
+                                onChange={(e) => setOtp(e.target.value)}
+                                placeholder="Enter the 6-digit activation code..."
+                                className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-rose-100 dark:border-zinc-800 bg-rose-50/20 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-amber-300 tracking-widest text-zinc-800 dark:text-zinc-200 text-center font-bold font-mono"
+                              />
+                            </div>
+                          </div>
+
+                          {otpPreview && (
+                            <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+                              <span className="text-[10px] text-zinc-500">Visual assistance (Sandbox preview):</span>
+                              <span className="font-mono bg-pink-500/10 text-pink-600 py-0.5 px-2 rounded text-xs font-bold">{otpPreview}</span>
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-3 gap-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOtpSent(false);
+                                setSuccessMsg(null);
+                                setErrorStatus(null);
+                                setOtp('');
+                              }}
+                              className="col-span-1 py-2.5 rounded-full border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 text-xs font-bold uppercase tracking-wider transition-all line-clamp-1 truncate cursor-pointer"
+                            >
+                              Change Number
+                            </button>
+
+                            <button
+                              type="submit"
+                              disabled={isLoading}
+                              className="col-span-2 py-2.5 rounded-full bg-gradient-to-r from-pink-500 to-amber-500 text-white font-medium text-xs uppercase tracking-wider hover:opacity-95 shadow-md flex items-center justify-center space-x-2 transition-all hover:scale-[1.01] cursor-pointer disabled:opacity-50"
+                            >
+                              {isLoading && <RefreshCw className="h-3 w-3 animate-spin" />}
+                              <span>Verify & Register Profile</span>
+                            </button>
+                          </div>
+
+                          <div className="text-center">
+                            <button
+                              type="button"
+                              onClick={handleSendOtp}
+                              disabled={secondsRemaining > 240}
+                              className="text-[10px] text-pink-500 hover:underline disabled:text-zinc-400 text-center mx-auto cursor-pointer"
+                            >
+                              Didn't receive the SMS? Send Code Again {secondsRemaining > 240 ? `(wait ${secondsRemaining - 240}s)` : ''}
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

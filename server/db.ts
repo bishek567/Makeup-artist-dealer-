@@ -7,7 +7,7 @@ import { Service, OfferPackage, Booking, SupportContact, CustomerMessage, Dashbo
 // Initialize environment variables
 dotenv.config();
 
-let supabaseUrl = (process.env.SUPABASE_URL || 'https://nbkbwqvohpfvhmzqptfk.supabase.co').trim();
+export let supabaseUrl = (process.env.SUPABASE_URL || 'https://nbkbwqvohpfvhmzqptfk.supabase.co').trim();
 // Strip leading/trailing single or double quotes
 supabaseUrl = supabaseUrl.replace(/^['"]|['"]$/g, '').trim();
 

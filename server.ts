@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { createServer as createViteServer } from 'vite';
-import { dbInstance } from './server/db';
+import { dbInstance, supabaseClient, supabaseUrl } from './server/db';
 import { Booking, Service, OfferPackage, SupportContact } from './src/types';
 
 // Simple in-memory rate limiting map
@@ -61,9 +61,9 @@ const sanitizeString = (str: string): string => {
 };
 
 // Admin Pre-shared Credentials (hashed for security representation)
-// Default config: admin@beaution.com / admin123
-const ADMIN_EMAIL = 'admin@beaution.com';
-const ADMIN_PASSWORD_HASH = crypto.createHash('sha256').update('admin123').digest('hex');
+// Default config: beaution@admin / beaution@123
+const ADMIN_EMAIL = 'beaution@admin';
+const ADMIN_PASSWORD_HASH = crypto.createHash('sha256').update('beaution@123').digest('hex');
 
 // Simple JWT-like tokens valid in memory
 const activeTokens = new Set<string>();
@@ -591,6 +591,51 @@ app.post('/api/otp/verify', (req, res) => {
 });
 
 /**
+ * Sync / upsert profile for users logged in via real client-side Supabase Auth
+ */
+app.post('/api/profiles/supabase-auth-sync', (req, res) => {
+  const { name, email, phone, countryCode, countryName, countryFlag, supabaseId } = req.body;
+
+  if (!email) {
+    res.status(400).json({ error: 'Missing account email.' });
+    return;
+  }
+
+  const existingProfiles = dbInstance.getProfiles();
+  // Find by existing Supabase user identifier or email match
+  let profile = existingProfiles.find(p => p.email.toLowerCase() === email.toLowerCase());
+
+  if (profile) {
+    // Return existing profile
+    res.json({
+      success: true,
+      message: 'Active profile linked to Supabase account.',
+      profile
+    });
+  } else {
+    // Auto design / register a VIP profile
+    const nameSeed = name ? sanitizeString(name) : email.split('@')[0];
+    const cleanPhone = phone ? phone.replace(/\D/g, '') : '';
+
+    profile = dbInstance.addProfile({
+      name: nameSeed,
+      email: email.toLowerCase(),
+      phone: cleanPhone,
+      countryCode: countryCode ? sanitizeString(countryCode) : '+1',
+      countryName: countryName ? sanitizeString(countryName) : 'United States',
+      countryFlag: countryFlag ? sanitizeString(countryFlag) : '🇺🇸',
+      verified: true
+    });
+
+    res.json({
+      success: true,
+      message: 'New elegant profile created and linked to Supabase account.',
+      profile
+    });
+  }
+});
+
+/**
  * Fetch simulated incoming SMS Logs to build beautiful customer validation dashboard
  */
 app.get('/api/sms/logs', (req, res) => {
@@ -614,6 +659,54 @@ app.delete('/api/profiles/:id', authenticateAdmin, (req, res) => {
     res.json({ success: true, message: 'VIP Customer Profile deleted successfully.' });
   } else {
     res.status(404).json({ error: 'VIP Customer Profile not found.' });
+  }
+});
+
+/**
+ * SUPABASE DIAGNOSTIC & TELEMETRY MODULE
+ */
+app.get('/api/supabase/diagnostic', authenticateAdmin, async (req, res) => {
+  const tables = ['services', 'packages', 'bookings', 'contacts', 'messages', 'profiles'];
+  const results: Record<string, { status: string; count?: number; error?: string }> = {};
+
+  for (const table of tables) {
+    try {
+      const { data, count, error } = await supabaseClient
+        .from(table)
+        .select('*', { count: 'exact', head: true });
+
+      if (error) {
+        results[table] = {
+          status: 'error',
+          error: error.message
+        };
+      } else {
+        results[table] = {
+          status: 'exists',
+          count: count !== null ? count : (data ? data.length : 0)
+        };
+      }
+    } catch (err: any) {
+      results[table] = {
+        status: 'connection_failed',
+        error: err.message || JSON.stringify(err)
+      };
+    }
+  }
+
+  res.json({
+    supabaseUrl,
+    supabaseConnected: Object.values(results).some(r => r.status === 'exists'),
+    results
+  });
+});
+
+app.post('/api/supabase/sync', authenticateAdmin, async (req, res) => {
+  try {
+    await dbInstance.syncFromSupabase();
+    res.json({ success: true, message: 'Forced data synchronization with Supabase initiated successfully!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Synchronization command failed.' });
   }
 });
 

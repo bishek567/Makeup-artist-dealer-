@@ -35,7 +35,7 @@ export default function AdminPanel({
   const [loginLoading, setLoginLoading] = useState(false);
 
   // Active workspace tab
-  const [activeAdminTab, setActiveAdminTab] = useState<'stats' | 'bookings' | 'services' | 'packages' | 'messages_contacts' | 'profiles'>('stats');
+  const [activeAdminTab, setActiveAdminTab] = useState<'stats' | 'bookings' | 'services' | 'packages' | 'messages_contacts' | 'profiles' | 'supabase'>('stats');
 
   // Customer Profiles
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
@@ -520,7 +520,7 @@ export default function AdminPanel({
                 <input
                   type="email"
                   required
-                  placeholder="admin@beaution.com"
+                  placeholder="beaution@admin"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 bg-zinc-50 dark:bg-zinc-950 border border-rose-100/10 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-pink-500 text-zinc-900 dark:text-zinc-100 font-mono"
@@ -604,6 +604,7 @@ export default function AdminPanel({
             { id: 'services', label: `Cosmetic Services (${services.length})`, icon: ShoppingBag },
             { id: 'packages', label: `Promo Offers (${packages.length})`, icon: ShoppingBag },
             { id: 'messages_contacts', label: 'Contacts & Messages', icon: MessageSquare },
+            { id: 'supabase', label: 'Supabase Status', icon: ShieldCheck },
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -1306,7 +1307,286 @@ export default function AdminPanel({
           </div>
         )}
 
+        {/* TAB 7: SUPABASE STATUS & SCHEMAS */}
+        {activeAdminTab === 'supabase' && (
+          <SupabaseTelemetryPanel token={token} onRefreshStatus={refreshAllData} />
+        )}
+
       </div>
     </section>
+  );
+}
+
+function SupabaseTelemetryPanel({ token, onRefreshStatus }: { token: string | null; onRefreshStatus: () => void }) {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any>(null);
+  const [errorStatus, setErrorStatus] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const fetchDiagnostic = async () => {
+    setLoading(true);
+    setErrorStatus(null);
+    try {
+      const res = await fetch('/api/supabase/diagnostic', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const payload = await res.json();
+        setData(payload);
+      } else {
+        const body = await res.json();
+        setErrorStatus(body.error || 'Failed to fetch Supabase diagnostics');
+      }
+    } catch (err: any) {
+      setErrorStatus(err.message || 'Connection to backend failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const syncAllData = async () => {
+    setActionLoading(true);
+    try {
+      const res = await fetch('/api/supabase/sync', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const body = await res.json();
+      if (res.ok) {
+        alert(body.message || 'Synchronized complete!');
+        fetchDiagnostic();
+        onRefreshStatus();
+      } else {
+        alert(body.error || 'Failed to perform sync command.');
+      }
+    } catch (e: any) {
+      alert('Error: ' + e.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDiagnostic();
+  }, [token]);
+
+  const sqlSchema = `-- Copy & Paste this raw SQL into your Supabase SQL Editor to make sure all tables exist with correct schemas:
+
+CREATE TABLE IF NOT EXISTS public.services (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  description text NOT NULL,
+  "originalPrice" numeric NOT NULL,
+  "offerPrice" numeric NOT NULL,
+  image text,
+  category text,
+  rating numeric
+);
+
+CREATE TABLE IF NOT EXISTS public.packages (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  services jsonb NOT NULL,
+  "originalPrice" numeric NOT NULL,
+  "offerPrice" numeric NOT NULL,
+  badge text,
+  description text,
+  "expiryDate" text
+);
+
+CREATE TABLE IF NOT EXISTS public.bookings (
+  id text PRIMARY KEY,
+  "customerName" text NOT NULL,
+  "customerEmail" text NOT NULL,
+  "customerPhone" text NOT NULL,
+  "serviceId" text,
+  "packageId" text,
+  "selectedDate" text NOT NULL,
+  "selectedTime" text NOT NULL,
+  "totalAmount" numeric NOT NULL,
+  "paymentStatus" text NOT NULL,
+  "paymentMethod" text,
+  "paymentId" text,
+  notes text,
+  status text NOT NULL,
+  "createdAt" text NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.contacts (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  phone text NOT NULL,
+  email text NOT NULL,
+  location text NOT NULL,
+  "supportTiming" text NOT NULL,
+  status text NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.messages (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  phone text,
+  email text NOT NULL,
+  message text NOT NULL,
+  "createdAt" text NOT NULL,
+  status text NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  email text NOT NULL,
+  phone text NOT NULL,
+  "countryCode" text NOT NULL,
+  "countryName" text NOT NULL,
+  "countryFlag" text NOT NULL,
+  verified boolean NOT NULL,
+  "createdAt" text NOT NULL
+);`;
+
+  const copySql = () => {
+    navigator.clipboard.writeText(sqlSchema);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800/80 p-6 sm:p-8 rounded-3xl space-y-8 animate-fade-in text-left">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="space-y-1">
+          <h3 className="text-lg font-bold font-serif text-zinc-900 dark:text-white">Supabase Live Connection Control</h3>
+          <p className="text-xs text-zinc-400">Verifying live synchronization statistics with custom Supabase schema tables.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={fetchDiagnostic}
+            disabled={loading}
+            className="py-1.5 px-4 rounded-full border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-bold transition-all inline-flex items-center space-x-1.5 cursor-pointer text-zinc-700 dark:text-zinc-350"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span>Test Connection</span>
+          </button>
+          <button
+            onClick={syncAllData}
+            disabled={actionLoading}
+            className="py-1.5 px-4 rounded-full bg-pink-650 hover:opacity-90 font-bold text-xs text-white transition-all inline-flex items-center space-x-1.5 shadow-md cursor-pointer"
+          >
+            {actionLoading ? (
+              <>
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                <span>Synchronizing...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>Force Full Synchronization</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="py-12 text-center text-xs text-zinc-400 font-medium">
+          <RefreshCw className="h-6 w-6 animate-spin mx-auto text-pink-600 mb-2" />
+          <span>Polling Supabase project tables status telemetry...</span>
+        </div>
+      ) : errorStatus ? (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl text-xs space-y-1">
+          <span className="font-bold flex items-center gap-1.5">
+            <AlertCircle className="h-4 w-4" />
+            <span>Server Communication Error</span>
+          </span>
+          <p className="opacity-80">{errorStatus}</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 bg-zinc-50 dark:bg-zinc-950 rounded-2xl space-y-2 border border-zinc-150/10 dark:border-zinc-900">
+              <span className="text-[10px] text-zinc-450 uppercase font-bold tracking-wider block">Supabase App Server URL</span>
+              <span className="font-mono text-xs text-zinc-800 dark:text-zinc-200 block truncate" title={data?.supabaseUrl}>
+                {data?.supabaseUrl}
+              </span>
+            </div>
+            <div className="p-4 bg-zinc-50 dark:bg-zinc-950 rounded-2xl space-y-2 border border-zinc-150/10 dark:border-zinc-900">
+              <span className="text-[10px] text-zinc-450 uppercase font-bold tracking-wider block">Link Integration Status</span>
+              <span className={`inline-flex items-center space-x-1.5 text-xs font-bold ${data?.supabaseConnected ? 'text-emerald-500' : 'text-amber-500'}`}>
+                <span className={`h-2.5 w-2.5 rounded-full ${data?.supabaseConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-455'}`}></span>
+                <span>{data?.supabaseConnected ? 'ONLINE & SYNCED' : 'TABLES MISSING / DEPLOY SCHEMA'}</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <span className="text-xs uppercase font-bold text-zinc-400 tracking-wider block">Table Schema Diagnostics</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {data && Object.entries(data.results || {}).map(([table, res]: any) => {
+                const status = res.status;
+                const count = res.count;
+
+                return (
+                  <div key={table} className="p-4 bg-zinc-50 dark:bg-zinc-950/40 border border-zinc-100 dark:border-zinc-850 rounded-2xl space-y-3 shadow-sm flex flex-col justify-between">
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="font-mono text-xs font-bold text-zinc-800 dark:text-zinc-200">{table}</span>
+                        {status === 'exists' ? (
+                          <span className="bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                            Active
+                          </span>
+                        ) : (
+                          <span className="bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-450 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                            Missing
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-zinc-400 leading-normal">
+                        Matches your internal live cache records.
+                      </p>
+                    </div>
+
+                    <div className="pt-2 border-t border-zinc-100 dark:border-zinc-850">
+                      {status === 'exists' ? (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-zinc-400">Total stored rows:</span>
+                          <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200 text-sm">{count}</span>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-amber-500 font-bold block">Action Required</span>
+                          <p className="text-[9px] text-zinc-400 leading-tight">
+                            Table doesn't exist yet or is unreachable. Ensure the table exists in Supabase.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-4">
+            <div className="flex justify-between items-center flex-wrap gap-2">
+              <div>
+                <span className="text-xs uppercase font-bold text-zinc-400 tracking-wider block">One-Click SQL Schema Installer</span>
+                <p className="text-[11px] text-zinc-450 mt-0.5 font-sans">Copy and run this exact script in your Supabase SQL Editor to instantly setup all tables.</p>
+              </div>
+              <button
+                onClick={copySql}
+                className="py-1.5 px-3 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-[10px] uppercase font-bold transition-all text-zinc-650 dark:text-zinc-300 flex items-center space-x-1.5"
+              >
+                {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <PlusCircle className="h-3 w-3" />}
+                <span>{copied ? 'Copied' : 'Copy SQL Script'}</span>
+              </button>
+            </div>
+
+            <pre className="p-4 bg-zinc-950 text-white rounded-2xl text-[10px] font-mono leading-relaxed overflow-x-auto border border-zinc-800 selection:bg-pink-500 selection:text-white max-h-60 overflow-y-auto">
+              {sqlSchema}
+            </pre>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
