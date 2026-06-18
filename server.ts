@@ -409,6 +409,14 @@ app.post('/api/payments', (req, res) => {
   if (targetIdx !== -1) {
     list[targetIdx].paymentMethod = sanitizeString(paymentMethod);
     list[targetIdx].paymentId = paymentId;
+    
+    // Explicitly document PhonePe routing for UPI payments of Booking
+    if (paymentMethod === 'UPI') {
+      const routingStamp = `[PhonePe UPI Redirected to: 9342956011@axl]`;
+      const originalNotes = list[targetIdx].notes || '';
+      list[targetIdx].notes = originalNotes ? `${routingStamp} ${originalNotes}` : routingStamp;
+    }
+    
     // Persist
     dbInstance.updateBookingStatus(bookingId, 'confirmed', 'paid');
     // Save details explicitly

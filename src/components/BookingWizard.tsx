@@ -469,17 +469,56 @@ export default function BookingWizard({
                   <div>
                     {paymentMethod === 'UPI' && (
                       <div className="space-y-4">
-                        <span className="text-[10px] uppercase font-bold text-pink-500">Instant UPI Payment</span>
-                        <p className="text-[11px] text-zinc-500 leading-relaxed">Enter your personal Virtual Payment Address (e.g., GPay, PhonePe, Bhim, or Paytm string). A notification request will trigger immediately on your app.</p>
-                        <div>
-                          <label className="text-[10px] font-bold text-zinc-400 block mb-1">UPI VPA ID ACCORDINGLY</label>
+                        <div className="bg-[#5f259f]/10 dark:bg-[#5f259f]/20 border border-[#5f259f]/30 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between text-left gap-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-[10px] uppercase font-bold text-white bg-[#5f259f] px-2.5 py-1 rounded-md tracking-wider">
+                                PhonePe UPI Verified
+                              </span>
+                              <span className="text-[10px] text-zinc-500 font-mono font-bold">9342956011@axl</span>
+                            </div>
+                            <h4 className="text-xs font-serif font-bold text-[#5f259f] dark:text-[#a07cd0]">
+                              Direct Connected Merchant Redirect
+                            </h4>
+                            <p className="text-[11px] text-zinc-650 dark:text-zinc-400 leading-relaxed">
+                              All booking proceeds are successfully bridged and connected page-wide to secure PhonePe UPI: <strong className="font-mono text-zinc-900 dark:text-zinc-100">9342956011@axl</strong>
+                            </p>
+                            <div className="pt-2">
+                              <a
+                                href={`upi://pay?pa=9342956011@axl&pn=Beaution%20Cosmetics&am=${getTotalAmount()}&cu=INR&tn=Beaution%20Booking`}
+                                className="inline-flex items-center space-x-1.5 bg-[#5f259f] hover:bg-[#4d1f80] text-white px-3.5 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider shadow-md transition-all active:scale-95"
+                              >
+                                <span>⚡ Pay with PhonePe App</span>
+                              </a>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-center justify-center shrink-0 bg-white p-2.5 rounded-xl border border-rose-100/10 shadow-sm">
+                            <img
+                              src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`upi://pay?pa=9342956011@axl&pn=Beaution%20Cosmetics&am=${getTotalAmount()}&cu=INR&tn=Beaution%2520Booking`)}`}
+                              alt="PhonePe UPI Scan Code"
+                              className="h-28 w-28 object-contain"
+                              referrerPolicy="no-referrer"
+                            />
+                            <span className="text-[9px] uppercase font-mono tracking-widest text-zinc-500 mt-1 font-bold">
+                              Scan & Pay
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-zinc-400 block">YOUR SENDER UPI VPA ADDRESS</label>
                           <input
                             type="text"
+                            required
                             value={upiId}
                             onChange={(e) => setUpiId(e.target.value)}
-                            placeholder="e.g. rachel@oksbi"
-                            className="w-full p-2 bg-white dark:bg-zinc-900 border border-rose-100/10 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-pink-500"
+                            placeholder="Type your UPI ID to match (e.g. yourname@ybl, yourphone@paytm)"
+                            className="w-full p-2.5 bg-white dark:bg-zinc-900 border border-rose-100/10 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-pink-500"
                           />
+                          <p className="text-[10px] text-zinc-500 italic">
+                            Used by the auditing team to verify your payment status successfully.
+                          </p>
                         </div>
                       </div>
                     )}
