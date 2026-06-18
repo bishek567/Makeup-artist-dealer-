@@ -1,0 +1,485 @@
+import fs from 'fs';
+import path from 'path';
+import { Service, OfferPackage, Booking, SupportContact, CustomerMessage, DashboardStats } from '../src/types';
+
+const DB_DIR = path.join(process.cwd(), 'data');
+const DB_FILE = path.join(DB_DIR, 'db.json');
+
+interface DatabaseSchema {
+  services: Service[];
+  packages: OfferPackage[];
+  bookings: Booking[];
+  contacts: SupportContact[];
+  messages: CustomerMessage[];
+}
+
+const INITIAL_SERVICES: Service[] = [
+  {
+    id: 's1',
+    name: 'Bridal Makeup',
+    description: 'Ultra-HD flawless bridal glow customized to your attire. Includes detailed skin prep, lash application, and custom contouring.',
+    originalPrice: 15000,
+    offerPrice: 11999,
+    image: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?q=80&w=600&auto=format&fit=crop',
+    category: 'makeup',
+    rating: 4.9
+  },
+  {
+    id: 's2',
+    name: 'Party Makeup',
+    description: 'Chic, premium makeup for guests and cocktail events. Highlights your best features with elegant shading and high-durability finish.',
+    originalPrice: 6000,
+    offerPrice: 4499,
+    image: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?q=80&w=600&auto=format&fit=crop',
+    category: 'makeup',
+    rating: 4.7
+  },
+  {
+    id: 's3',
+    name: 'HD Makeup',
+    description: 'High-definition silicon-infused makeup designed specifically to look flawless under raw studio flashlights and high-res video cameras.',
+    originalPrice: 10000,
+    offerPrice: 7999,
+    image: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?q=80&w=600&auto=format&fit=crop',
+    category: 'makeup',
+    rating: 4.8
+  },
+  {
+    id: 's4',
+    name: 'Airbrush Makeup',
+    description: 'Sophisticated spray-mist makeup that gives a weightless, highly sanitary, and absolutely transfer-proof porcelain finish lasting up to 24 hours.',
+    originalPrice: 12000,
+    offerPrice: 9499,
+    image: 'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?q=80&w=600&auto=format&fit=crop',
+    category: 'makeup',
+    rating: 4.9
+  },
+  {
+    id: 's5',
+    name: 'Engagement Makeup',
+    description: 'Elegant, dewy makeup that strikes the perfect balance between beautiful daytime grace and evening glamour. Includes soft-focus lash highlights.',
+    originalPrice: 8000,
+    offerPrice: 5999,
+    image: 'https://images.unsplash.com/photo-1515688594390-b649af70d282?q=80&w=600&auto=format&fit=crop',
+    category: 'makeup',
+    rating: 4.8
+  },
+  {
+    id: 's6',
+    name: 'Hair Styling',
+    description: 'Creative braids, romantic waves, elegant chignons, or modern updos carefully designed and set using luxury thermal protectants.',
+    originalPrice: 3000,
+    offerPrice: 1999,
+    image: 'https://images.unsplash.com/photo-1562322140-8baeececf3df?q=80&w=600&auto=format&fit=crop',
+    category: 'styling',
+    rating: 4.6
+  },
+  {
+    id: 's7',
+    name: 'Saree Draping',
+    description: 'Sturdy, perfectly pinned and pleated traditional styles (Kanjivaram, Bengali, Gujarati, Modern) customized for flawless aesthetic flow.',
+    originalPrice: 2000,
+    offerPrice: 1499,
+    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=80&w=600&auto=format&fit=crop',
+    category: 'styling',
+    rating: 4.7
+  }
+];
+
+const INITIAL_PACKAGES: OfferPackage[] = [
+  {
+    id: 'p1',
+    name: 'Bronze Package',
+    services: ['Party Makeup', 'Hair Styling', 'Saree Draping'],
+    originalPrice: 11000,
+    offerPrice: 6999,
+    badge: 'Classic Glam',
+    description: 'Best choice for premium wedding guests or traditional get-togethers. Includes full face makeup, hairstyling, and professional saree pleating.'
+  },
+  {
+    id: 'p2',
+    name: 'Silver Package',
+    services: ['HD Makeup', 'Hair Styling', 'Saree Draping'],
+    originalPrice: 15000,
+    offerPrice: 9999,
+    badge: 'Celebration Diva',
+    description: 'Tailored for close family members and premium receptions. High-definition base ensures sweat-resistant finish that photographs beautifully.'
+  },
+  {
+    id: 'p3',
+    name: 'Gold Package',
+    services: ['Airbrush Makeup', 'Hair Styling', 'Saree Draping'],
+    originalPrice: 17000,
+    offerPrice: 11999,
+    badge: 'Flawless Airbrush',
+    description: 'Our top-selling luxury set. Liquid airbrush mist guarantees the most lightweight, comfortable, and transfer-proof feel for grand banquets.'
+  },
+  {
+    id: 'p4',
+    name: 'Premium Package',
+    services: ['Bridal Makeup', 'Hair Styling', 'Saree Draping'],
+    originalPrice: 20000,
+    offerPrice: 14999,
+    badge: 'Royal Bride',
+    description: 'The ultimate signature package for brides. Includes HD Bridal makeup, elegant custom crown hairstyling, premium saree draping, and pre-makeup deluxe hydration skin prep.'
+  }
+];
+
+const INITIAL_CONTACTS: SupportContact[] = [
+  {
+    id: 'c1',
+    name: 'Beaution Flagship Salon',
+    phone: '+919876543210',
+    email: 'support@beaution.com',
+    location: '102 Luxury Galleria, MG Road, Bangalore - 560001',
+    supportTiming: '9:00 AM - 8:00 PM (Daily)',
+    status: 'active'
+  },
+  {
+    id: 'c2',
+    name: 'Bridal Emergency Hotline',
+    phone: '+919999988888',
+    email: 'bridaldesk@beaution.com',
+    location: 'Mobiles / Travel Specialists Desk',
+    supportTiming: '6:00 AM - 11:30 PM (Daily)',
+    status: 'active'
+  }
+];
+
+const INITIAL_BOOKINGS: Booking[] = [
+  {
+    id: 'b1',
+    customerName: 'Aishwarya Sen',
+    customerEmail: 'aishwarya@gmail.com',
+    customerPhone: '9888877777',
+    serviceId: 's1',
+    selectedDate: '2026-06-25',
+    selectedTime: '10:00 AM',
+    totalAmount: 11999,
+    paymentStatus: 'paid',
+    paymentMethod: 'UPI',
+    paymentId: 'TXN839210928391',
+    notes: 'Please arrange premium lashes. Matching saree color is crimson red.',
+    status: 'confirmed',
+    createdAt: '2026-06-15T14:24:00Z'
+  },
+  {
+    id: 'b2',
+    customerName: 'Anjali Sharma',
+    customerEmail: 'anjali.s@yahoo.com',
+    customerPhone: '9777766666',
+    packageId: 'p3',
+    selectedDate: '2026-06-28',
+    selectedTime: '02:00 PM',
+    totalAmount: 11999,
+    paymentStatus: 'paid',
+    paymentMethod: 'Card',
+    paymentId: 'TXN291039827013',
+    notes: 'Reception. Prefer gold eye glitter.',
+    status: 'pending',
+    createdAt: '2026-06-17T09:12:00Z'
+  }
+];
+
+const INITIAL_MESSAGES: CustomerMessage[] = [
+  {
+    id: 'm1',
+    name: 'Pooja Hegde',
+    phone: '9666655555',
+    email: 'pooja.h@outlook.com',
+    message: 'Hello Beaution! Do you provide travel-to-venue services for a group of 5 bridesmaids alongside bridal makeup? Let me know the group pricing.',
+    createdAt: '2026-06-17T11:45:00Z',
+    status: 'unread'
+  }
+];
+
+export class Database {
+  private data: DatabaseSchema;
+
+  constructor() {
+    this.data = {
+      services: [],
+      packages: [],
+      bookings: [],
+      contacts: [],
+      messages: []
+    };
+    this.init();
+  }
+
+  private init() {
+    try {
+      if (!fs.existsSync(DB_DIR)) {
+        fs.mkdirSync(DB_DIR, { recursive: true });
+      }
+
+      if (fs.existsSync(DB_FILE)) {
+        const raw = fs.readFileSync(DB_FILE, 'utf-8');
+        this.data = JSON.parse(raw);
+        // Ensure all collections are lists
+        this.data.services = this.data.services || INITIAL_SERVICES;
+        this.data.packages = this.data.packages || INITIAL_PACKAGES;
+        this.data.bookings = this.data.bookings || INITIAL_BOOKINGS;
+        this.data.contacts = this.data.contacts || INITIAL_CONTACTS;
+        this.data.messages = this.data.messages || INITIAL_MESSAGES;
+      } else {
+        this.data = {
+          services: INITIAL_SERVICES,
+          packages: INITIAL_PACKAGES,
+          bookings: INITIAL_BOOKINGS,
+          contacts: INITIAL_CONTACTS,
+          messages: INITIAL_MESSAGES
+        };
+        this.save();
+      }
+    } catch {
+      // Fallback
+      this.data = {
+        services: INITIAL_SERVICES,
+        packages: INITIAL_PACKAGES,
+        bookings: INITIAL_BOOKINGS,
+        contacts: INITIAL_CONTACTS,
+        messages: INITIAL_MESSAGES
+      };
+    }
+  }
+
+  private save() {
+    try {
+      fs.writeFileSync(DB_FILE, JSON.stringify(this.data, null, 2), 'utf-8');
+    } catch (e) {
+      console.error('Failed to write to local DB file:', e);
+    }
+  }
+
+  // --- Services CRUD ---
+  getServices(): Service[] {
+    return this.data.services;
+  }
+
+  addService(service: Omit<Service, 'id'>): Service {
+    const newService: Service = {
+      ...service,
+      id: 's_' + Date.now().toString(36)
+    };
+    this.data.services.push(newService);
+    this.save();
+    return newService;
+  }
+
+  updateService(id: string, updated: Partial<Service>): Service | null {
+    const idx = this.data.services.findIndex(s => s.id === id);
+    if (idx === -1) return null;
+    this.data.services[idx] = { ...this.data.services[idx], ...updated };
+    this.save();
+    return this.data.services[idx];
+  }
+
+  deleteService(id: string): boolean {
+    const lengthBefore = this.data.services.length;
+    this.data.services = this.data.services.filter(s => s.id !== id);
+    if (this.data.services.length < lengthBefore) {
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  // --- Packages CRUD ---
+  getPackages(): OfferPackage[] {
+    return this.data.packages;
+  }
+
+  addPackage(pkg: Omit<OfferPackage, 'id'>): OfferPackage {
+    const newPkg: OfferPackage = {
+      ...pkg,
+      id: 'p_' + Date.now().toString(36)
+    };
+    this.data.packages.push(newPkg);
+    this.save();
+    return newPkg;
+  }
+
+  updatePackage(id: string, updated: Partial<OfferPackage>): OfferPackage | null {
+    const idx = this.data.packages.findIndex(p => p.id === id);
+    if (idx === -1) return null;
+    this.data.packages[idx] = { ...this.data.packages[idx], ...updated };
+    this.save();
+    return this.data.packages[idx];
+  }
+
+  deletePackage(id: string): boolean {
+    const lengthBefore = this.data.packages.length;
+    this.data.packages = this.data.packages.filter(p => p.id !== id);
+    if (this.data.packages.length < lengthBefore) {
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  // --- Bookings CRUD ---
+  getBookings(): Booking[] {
+    return this.data.bookings;
+  }
+
+  addBooking(booking: Omit<Booking, 'id' | 'createdAt'>): Booking {
+    const newBooking: Booking = {
+      ...booking,
+      id: 'B' + Math.floor(100000 + Math.random() * 900000).toString(),
+      createdAt: new Date().toISOString()
+    };
+    this.data.bookings.push(newBooking);
+    this.save();
+    return newBooking;
+  }
+
+  updateBookingStatus(id: string, status: Booking['status'], paymentStatus?: Booking['paymentStatus']): Booking | null {
+    const idx = this.data.bookings.findIndex(b => b.id === id);
+    if (idx === -1) return null;
+    this.data.bookings[idx].status = status;
+    if (paymentStatus) {
+      this.data.bookings[idx].paymentStatus = paymentStatus;
+    }
+    this.save();
+    return this.data.bookings[idx];
+  }
+
+  deleteBooking(id: string): boolean {
+    const lengthBefore = this.data.bookings.length;
+    this.data.bookings = this.data.bookings.filter(b => b.id !== id);
+    if (this.data.bookings.length < lengthBefore) {
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  // --- Support Contacts CRUD ---
+  getContacts(): SupportContact[] {
+    return this.data.contacts;
+  }
+
+  addContact(contact: Omit<SupportContact, 'id'>): SupportContact {
+    const newContact: SupportContact = {
+      ...contact,
+      id: 'c_' + Date.now().toString(36)
+    };
+    this.data.contacts.push(newContact);
+    this.save();
+    return newContact;
+  }
+
+  updateContact(id: string, updated: Partial<SupportContact>): SupportContact | null {
+    const idx = this.data.contacts.findIndex(c => c.id === id);
+    if (idx === -1) return null;
+    this.data.contacts[idx] = { ...this.data.contacts[idx], ...updated };
+    this.save();
+    return this.data.contacts[idx];
+  }
+
+  deleteContact(id: string): boolean {
+    const lengthBefore = this.data.contacts.length;
+    this.data.contacts = this.data.contacts.filter(c => c.id !== id);
+    if (this.data.contacts.length < lengthBefore) {
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  // --- Messages CRUD ---
+  getMessages(): CustomerMessage[] {
+    return this.data.messages;
+  }
+
+  addMessage(msg: Omit<CustomerMessage, 'id' | 'createdAt' | 'status'>): CustomerMessage {
+    const newMessage: CustomerMessage = {
+      ...msg,
+      id: 'm_' + Date.now().toString(36),
+      createdAt: new Date().toISOString(),
+      status: 'unread'
+    };
+    this.data.messages.push(newMessage);
+    this.save();
+    return newMessage;
+  }
+
+  markMessageRead(id: string): boolean {
+    const idx = this.data.messages.findIndex(m => m.id === id);
+    if (idx === -1) return false;
+    this.data.messages[idx].status = 'read';
+    this.save();
+    return true;
+  }
+
+  deleteMessage(id: string): boolean {
+    const lengthBefore = this.data.messages.length;
+    this.data.messages = this.data.messages.filter(m => m.id !== id);
+    if (this.data.messages.length < lengthBefore) {
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  // --- Analytics & Statistics ---
+  getStats(): DashboardStats {
+    const confirmed = this.data.bookings.filter(b => b.status === 'confirmed');
+    const totalRevenue = this.data.bookings
+      .filter(b => b.paymentStatus === 'paid')
+      .reduce((sum, b) => sum + b.totalAmount, 0);
+
+    const pending = this.data.bookings.filter(b => b.status === 'pending').length;
+
+    // Build monthly sales
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const currentMonthIdx = new Date().getMonth();
+    
+    // Distribute stats realistically across preceding 6 months
+    const monthlyRevenue = Array.from({ length: 6 }).map((_, i) => {
+      const idx = (currentMonthIdx - 5 + i + 12) % 12;
+      const monthLabel = months[idx];
+      // Generate some stable trend + real booking contribution
+      let amount = 25000 + idx * 5200;
+      // Add bookings from database matching this month
+      this.data.bookings.forEach(b => {
+        const bDate = new Date(b.createdAt);
+        if (bDate.getMonth() === idx && b.paymentStatus === 'paid') {
+          amount += b.totalAmount;
+        }
+      });
+      return { month: monthLabel, amount };
+    });
+
+    // Breakdown category ratios
+    let makeupCount = 0;
+    let stylingCount = 0;
+    this.data.bookings.forEach(b => {
+      if (b.serviceId) {
+        const s = this.data.services.find(x => x.id === b.serviceId);
+        if (s?.category === 'styling') stylingCount++;
+        else makeupCount++;
+      } else {
+        makeupCount++; // packages are makeup major
+      }
+    });
+
+    const bookingCategoryRatio = [
+      { name: 'Makeup Artistry', value: makeupCount || 5 },
+      { name: 'Hair & Styling', value: stylingCount || 2 }
+    ];
+
+    return {
+      totalRevenue,
+      totalBookings: this.data.bookings.length,
+      activeOffers: this.data.packages.length + this.data.services.filter(s => s.offerPrice < s.originalPrice).length,
+      pendingBookings: pending,
+      monthlyRevenue,
+      bookingCategoryRatio,
+      recentBookings: [...this.data.bookings].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5)
+    };
+  }
+}
+
+export const dbInstance = new Database();

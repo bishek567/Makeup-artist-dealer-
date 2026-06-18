@@ -1,0 +1,6 @@
+{
+  "name": "Beaution",
+  "description": "Luxury makeup services and beauty offers platform with online bookings, live countdown offers, and premium booking tools.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
