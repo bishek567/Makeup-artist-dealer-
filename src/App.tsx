@@ -10,6 +10,7 @@ import BlogSection from './components/BlogSection';
 import ContactSupport from './components/ContactSupport';
 import BookingWizard from './components/BookingWizard';
 import AdminPanel from './components/AdminPanel';
+import ProfileModal from './components/ProfileModal';
 import { Service, OfferPackage, SupportContact, CustomerMessage, Booking } from './types';
 import { Sparkles, Phone, Mail, MapPin, ShieldAlert, Heart, CalendarRange, Share2, Instagram, Facebook } from 'lucide-react';
 
@@ -23,8 +24,16 @@ export default function App() {
 
   // Booking Wizard states
   const [isBookingOpen, setIsBookingOpen] = useState<boolean>(false);
+  const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [preselectedService, setPreselectedService] = useState<Service | null>(null);
   const [preselectedPackage, setPreselectedPackage] = useState<OfferPackage | null>(null);
+
+  // Profile-gate booking states
+  const [pendingBookingType, setPendingBookingType] = useState<'general' | 'service' | 'package' | null>(null);
+  const [pendingService, setPendingService] = useState<Service | null>(null);
+  const [pendingPackage, setPendingPackage] = useState<OfferPackage | null>(null);
+  const [profileNotice, setProfileNotice] = useState<string | null>(null);
 
   // Administrative Sessions
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(false);
@@ -105,6 +114,14 @@ export default function App() {
 
   useEffect(() => {
     loadInitialData();
+    const cached = localStorage.getItem('beaution_profile');
+    if (cached) {
+      try {
+        setUserProfile(JSON.parse(cached));
+      } catch (e) {
+        // ignore
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -142,23 +159,42 @@ export default function App() {
     setMessages([]);
   };
 
-  // Core dialog trigger helpers
+  // Core dialog trigger helpers with registration gate validation
+  const checkProfileBeforeBooking = (type: 'general' | 'service' | 'package', service: Service | null, pkg: OfferPackage | null) => {
+    const cached = localStorage.getItem('beaution_profile');
+    if (!cached && !userProfile) {
+      // Store pending booking details for automatic resumption
+      setPendingBookingType(type);
+      setPendingService(service);
+      setPendingPackage(pkg);
+      // Set explanation notice
+      setProfileNotice(
+        type === 'package' 
+          ? `Please complete your profile registration first to secure your slot for the promotional offer: "${pkg?.name}".`
+          : type === 'service'
+          ? `Please complete your profile registration first to reserve a treatment slot for "${service?.name}".`
+          : 'Please complete your profile registration first to schedule your personalized cosmetic appointment.'
+      );
+      // Open the profile registration modal
+      setIsProfileOpen(true);
+    } else {
+      // Allow booking immediately
+      setPreselectedService(service);
+      setPreselectedPackage(pkg);
+      setIsBookingOpen(true);
+    }
+  };
+
   const handleOpenGeneralBooking = () => {
-    setPreselectedService(null);
-    setPreselectedPackage(null);
-    setIsBookingOpen(true);
+    checkProfileBeforeBooking('general', null, null);
   };
 
   const handleBookService = (service: Service) => {
-    setPreselectedService(service);
-    setPreselectedPackage(null);
-    setIsBookingOpen(true);
+    checkProfileBeforeBooking('service', service, null);
   };
 
   const handleBookPackage = (pkg: OfferPackage) => {
-    setPreselectedService(null);
-    setPreselectedPackage(pkg);
-    setIsBookingOpen(true);
+    checkProfileBeforeBooking('package', null, pkg);
   };
 
   return (
@@ -174,6 +210,13 @@ export default function App() {
         setIsDarkMode={setIsDarkMode}
         onOpenBooking={handleOpenGeneralBooking}
         onOpenAdmin={() => setActiveTab('admin')}
+        onOpenProfile={() => {
+          setProfileNotice(null);
+          setPendingBookingType(null);
+          setPendingService(null);
+          setPendingPackage(null);
+          setIsProfileOpen(true);
+        }}
         isAdminLoggedIn={isAdminLoggedIn}
         onLogoutAdmin={handleAdminLogout}
         bookingCount={bookings.length}
@@ -388,6 +431,39 @@ export default function App() {
           preselectedPackage={preselectedPackage}
           onClose={() => setIsBookingOpen(false)}
           onBookingSuccess={handleRefreshAllData}
+        />
+      )}
+
+      {/* 5. Countries-based Registered User Profiles Modal */}
+      {isProfileOpen && (
+        <ProfileModal
+          notice={profileNotice}
+          onClose={() => {
+            setIsProfileOpen(false);
+            setProfileNotice(null);
+            setPendingBookingType(null);
+            setPendingService(null);
+            setPendingPackage(null);
+          }}
+          onVerificationSuccess={(profile) => {
+            setUserProfile(profile);
+            handleRefreshAllData();
+            
+            // Post-registration: automatically resume booking wizard session
+            if (pendingBookingType) {
+              setPreselectedService(pendingService);
+              setPreselectedPackage(pendingPackage);
+              setTimeout(() => {
+                setIsBookingOpen(true);
+              }, 400);
+
+              // Empty buffers
+              setPendingBookingType(null);
+              setPendingService(null);
+              setPendingPackage(null);
+              setProfileNotice(null);
+            }
+          }}
         />
       )}
 

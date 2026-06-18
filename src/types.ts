@@ -1,3 +1,15 @@
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  countryCode: string;
+  countryName: string;
+  countryFlag: string;
+  verified: boolean;
+  createdAt: string;
+}
+
 export interface Service {
   id: string;
   name: string;

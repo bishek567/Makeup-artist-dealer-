@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { Service, OfferPackage, Booking, SupportContact, CustomerMessage, DashboardStats } from '../src/types';
+import { Service, OfferPackage, Booking, SupportContact, CustomerMessage, DashboardStats, UserProfile } from '../src/types';
 
 const DB_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DB_DIR, 'db.json');
@@ -11,6 +11,7 @@ interface DatabaseSchema {
   bookings: Booking[];
   contacts: SupportContact[];
   messages: CustomerMessage[];
+  profiles: UserProfile[];
 }
 
 const INITIAL_SERVICES: Service[] = [
@@ -202,7 +203,8 @@ export class Database {
       packages: [],
       bookings: [],
       contacts: [],
-      messages: []
+      messages: [],
+      profiles: []
     };
     this.init();
   }
@@ -222,13 +224,15 @@ export class Database {
         this.data.bookings = this.data.bookings || INITIAL_BOOKINGS;
         this.data.contacts = this.data.contacts || INITIAL_CONTACTS;
         this.data.messages = this.data.messages || INITIAL_MESSAGES;
+        this.data.profiles = this.data.profiles || [];
       } else {
         this.data = {
           services: INITIAL_SERVICES,
           packages: INITIAL_PACKAGES,
           bookings: INITIAL_BOOKINGS,
           contacts: INITIAL_CONTACTS,
-          messages: INITIAL_MESSAGES
+          messages: INITIAL_MESSAGES,
+          profiles: []
         };
         this.save();
       }
@@ -239,7 +243,8 @@ export class Database {
         packages: INITIAL_PACKAGES,
         bookings: INITIAL_BOOKINGS,
         contacts: INITIAL_CONTACTS,
-        messages: INITIAL_MESSAGES
+        messages: INITIAL_MESSAGES,
+        profiles: []
       };
     }
   }
@@ -417,6 +422,36 @@ export class Database {
     const lengthBefore = this.data.messages.length;
     this.data.messages = this.data.messages.filter(m => m.id !== id);
     if (this.data.messages.length < lengthBefore) {
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  // --- Profiles CRUD ---
+  getProfiles(): UserProfile[] {
+    return this.data.profiles || [];
+  }
+
+  addProfile(profile: Omit<UserProfile, 'id' | 'createdAt'>): UserProfile {
+    const newProfile: UserProfile = {
+      ...profile,
+      id: 'usr_' + Math.random().toString(36).substring(2, 9),
+      createdAt: new Date().toISOString()
+    };
+    if (!this.data.profiles) {
+      this.data.profiles = [];
+    }
+    this.data.profiles.push(newProfile);
+    this.save();
+    return newProfile;
+  }
+
+  deleteProfile(id: string): boolean {
+    if (!this.data.profiles) return false;
+    const initialLen = this.data.profiles.length;
+    this.data.profiles = this.data.profiles.filter(p => p.id !== id);
+    if (this.data.profiles.length < initialLen) {
       this.save();
       return true;
     }

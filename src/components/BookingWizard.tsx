@@ -61,6 +61,21 @@ export default function BookingWizard({
     '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM', '06:00 PM', '07:00 PM'
   ];
 
+  // Load saved local profile on mount
+  React.useEffect(() => {
+    const cached = localStorage.getItem('beaution_profile');
+    if (cached) {
+      try {
+        const profile = JSON.parse(cached);
+        if (profile.name) setFullName(profile.name);
+        if (profile.email) setEmail(profile.email);
+        if (profile.phone) setPhone(`+${profile.countryCode.replace(/\+/g, '')} ${profile.phone}`);
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, []);
+
   // Calculate pricing total
   const getTotalAmount = (): number => {
     if (bookingType === 'service') {
@@ -318,7 +333,15 @@ export default function BookingWizard({
 
               {/* Personal Details fields */}
               <div className="space-y-3.5 pt-2 border-t border-rose-100/10">
-                <span className="text-[10px] uppercase font-bold text-pink-650 block">Customer Information</span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[10px] uppercase font-bold text-pink-650 block">Customer Information</span>
+                  {localStorage.getItem('beaution_profile') && (
+                    <span className="inline-flex items-center space-x-1.5 py-0.5 px-2 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-bold uppercase tracking-wider">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>👑 My Profile Auto-Filled</span>
+                    </span>
+                  )}
+                </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>

@@ -438,6 +438,180 @@ app.get('/api/dashboard/stats', authenticateAdmin, (req, res) => {
   res.json(dbInstance.getStats());
 });
 
+/**
+ * PHONE REGISTRATION & OTP MODULE
+ * Supports multiple country validation and simulated SMS delivery logs
+ */
+
+interface PendingOtp {
+  phoneNumber: string;
+  otp: string;
+  expiresAt: number;
+}
+
+interface SMSLog {
+  id: string;
+  recipient: string;
+  country: string;
+  body: string;
+  timestamp: string;
+}
+
+// In-memory pending OTP registry
+const pendingOtps = new Map<string, PendingOtp>();
+
+// In-memory simulated SMS message delivery records
+const smsLogs: SMSLog[] = [];
+
+// Helper to generate a random 6-digit OTP code
+function generateSecureOtp(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+/**
+ * Send OTP validation request
+ */
+app.post('/api/otp/send', (req, res) => {
+  const { name, email, phone, countryCode, countryName, countryFlag } = req.body;
+
+  if (!phone || !countryCode || !name || !email) {
+    res.status(400).json({ error: 'Please enter your Name, Email, and Phone number.' });
+    return;
+  }
+
+  const cleanPhone = phone.replace(/\D/g, '');
+  if (cleanPhone.length < 5) {
+    res.status(400).json({ error: 'Please enter a valid phone number.' });
+    return;
+  }
+
+  const fullPhone = `${countryCode}${cleanPhone}`;
+  const otpCode = generateSecureOtp();
+
+  // Expire after 5 minutes
+  pendingOtps.set(fullPhone, {
+    phoneNumber: fullPhone,
+    otp: otpCode,
+    expiresAt: Date.now() + 5 * 60 * 1000
+  });
+
+  // Compose simulated branded SMS message
+  const smsBody = `[BEAUTION GLOW] Hello ${sanitizeString(name)}! Your premium activation code is ${otpCode}. Valid for 5 minutes. Do not share.`;
+
+  // Log in standard container console
+  console.log(`\n======================================================`);
+  console.log(`[SIMULATED SMS DISPATCH] To: ${fullPhone} (${countryFlag} ${countryName})`);
+  console.log(`Message Content: "${smsBody}"`);
+  console.log(`======================================================\n`);
+
+  smsLogs.unshift({
+    id: 'SMS_' + crypto.randomBytes(4).toString('hex').toUpperCase(),
+    recipient: fullPhone,
+    country: `${countryFlag} ${countryName}`,
+    body: smsBody,
+    timestamp: new Date().toISOString()
+  });
+
+  if (smsLogs.length > 50) {
+    smsLogs.pop();
+  }
+
+  res.json({
+    success: true,
+    message: 'OTP dispatch initiated successfully to simulated carrier.',
+    recipient: fullPhone,
+    otpPreview: otpCode 
+  });
+});
+
+/**
+ * Verify OTP code and register customer profile on success
+ */
+app.post('/api/otp/verify', (req, res) => {
+  const { name, email, phone, countryCode, countryName, countryFlag, otp } = req.body;
+
+  if (!phone || !countryCode || !otp || !name || !email) {
+    res.status(400).json({ error: 'Missing profile parameters or verification code.' });
+    return;
+  }
+
+  const cleanPhone = phone.replace(/\D/g, '');
+  const fullPhone = `${countryCode}${cleanPhone}`;
+
+  const storedOtp = pendingOtps.get(fullPhone);
+
+  if (!storedOtp) {
+    res.status(400).json({ error: 'Active OTP verification session not found or expired.' });
+    return;
+  }
+
+  if (Date.now() > storedOtp.expiresAt) {
+    pendingOtps.delete(fullPhone);
+    res.status(400).json({ error: 'Verification code expired. Please request a new OTP.' });
+    return;
+  }
+
+  if (storedOtp.otp !== otp.trim()) {
+    res.status(400).json({ error: 'Incorrect verification code. Please double check.' });
+    return;
+  }
+
+  // Clear matched code
+  pendingOtps.delete(fullPhone);
+
+  // Persistence inside Database file JSON list
+  const existingProfiles = dbInstance.getProfiles();
+  const alreadyRegistered = existingProfiles.find(p => p.phone === cleanPhone && p.countryCode === countryCode);
+
+  let profile;
+  if (alreadyRegistered) {
+    profile = alreadyRegistered;
+  } else {
+    profile = dbInstance.addProfile({
+      name: sanitizeString(name),
+      email: sanitizeString(email),
+      phone: cleanPhone,
+      countryCode: sanitizeString(countryCode),
+      countryName: sanitizeString(countryName),
+      countryFlag: sanitizeString(countryFlag),
+      verified: true
+    });
+  }
+
+  res.json({
+    success: true,
+    message: 'Profile authenticated and verified successfully.',
+    profile
+  });
+});
+
+/**
+ * Fetch simulated incoming SMS Logs to build beautiful customer validation dashboard
+ */
+app.get('/api/sms/logs', (req, res) => {
+  res.json(smsLogs);
+});
+
+/**
+ * Fetch all registered customers inside admin terminal
+ */
+app.get('/api/profiles', authenticateAdmin, (req, res) => {
+  res.json(dbInstance.getProfiles());
+});
+
+/**
+ * Remove/delete a VIP Customer Profile
+ */
+app.delete('/api/profiles/:id', authenticateAdmin, (req, res) => {
+  const { id } = req.params;
+  const deleted = dbInstance.deleteProfile(id);
+  if (deleted) {
+    res.json({ success: true, message: 'VIP Customer Profile deleted successfully.' });
+  } else {
+    res.status(404).json({ error: 'VIP Customer Profile not found.' });
+  }
+});
+
 // Configure Vite and Asset Fallbacks
 async function serveApp() {
   if (process.env.NODE_ENV !== 'production') {

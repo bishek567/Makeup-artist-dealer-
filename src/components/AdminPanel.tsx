@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Service, OfferPackage, Booking, SupportContact, CustomerMessage, DashboardStats } from '../types';
+import { Service, OfferPackage, Booking, SupportContact, CustomerMessage, DashboardStats, UserProfile } from '../types';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, PieChart, Pie, Cell } from 'recharts';
 import { ShieldCheck, Lock, Mail, Key, User, PlusCircle, Trash2, Edit2, CheckCircle2, TrendingUp, DollarSign, Calendar, MessageSquare, AlertCircle, ShoppingBag, LogOut, Check, RefreshCw } from 'lucide-react';
 
@@ -35,7 +35,11 @@ export default function AdminPanel({
   const [loginLoading, setLoginLoading] = useState(false);
 
   // Active workspace tab
-  const [activeAdminTab, setActiveAdminTab] = useState<'stats' | 'bookings' | 'services' | 'packages' | 'messages_contacts'>('stats');
+  const [activeAdminTab, setActiveAdminTab] = useState<'stats' | 'bookings' | 'services' | 'packages' | 'messages_contacts' | 'profiles'>('stats');
+
+  // Customer Profiles
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+  const [profilesLoading, setProfilesLoading] = useState(false);
 
   // Stats Analytics
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -80,6 +84,43 @@ export default function AdminPanel({
   const [bSvcId, setBSvcId] = useState('');
   const [bPrice, setBPrice] = useState('');
 
+  // Fetch Registered VIP Profiles
+  const fetchProfiles = async () => {
+    if (!token) return;
+    setProfilesLoading(true);
+    try {
+      const res = await fetch('/api/profiles', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setProfiles(data);
+      }
+    } catch (err) {
+      console.error('Error loading VIP Customer Profiles:', err);
+    } finally {
+      setProfilesLoading(false);
+    }
+  };
+
+  const handleDeleteProfile = async (id: string) => {
+    if (!window.confirm('Are you sure you want to permanently delete this registered customer profile? They will have to register again.')) return;
+    try {
+      const res = await fetch(`/api/profiles/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchProfiles();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to delete customer profile.');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   // Fetch Admin Stats
   const fetchStats = async () => {
     if (!token) return;
@@ -99,6 +140,7 @@ export default function AdminPanel({
   useEffect(() => {
     if (isAdminLoggedIn && token) {
       fetchStats();
+      fetchProfiles();
     }
   }, [isAdminLoggedIn, token, bookings, services, packages, messages, contacts]);
 
@@ -558,6 +600,7 @@ export default function AdminPanel({
           {[
             { id: 'stats', label: 'Overview Analytics', icon: TrendingUp },
             { id: 'bookings', label: `Appointments (${bookings.length})`, icon: Calendar },
+            { id: 'profiles', label: `VIP Customer Club (${profiles.length})`, icon: User },
             { id: 'services', label: `Cosmetic Services (${services.length})`, icon: ShoppingBag },
             { id: 'packages', label: `Promo Offers (${packages.length})`, icon: ShoppingBag },
             { id: 'messages_contacts', label: 'Contacts & Messages', icon: MessageSquare },
@@ -1153,6 +1196,113 @@ export default function AdminPanel({
               </div>
 
             </div>
+          </div>
+        )}
+
+        {/* TABS 6: REGISTERED VIP CUSTOMER DIRECTORY */}
+        {activeAdminTab === 'profiles' && (
+          <div className="space-y-8 animate-fade-in text-left">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-rose-100/10 shadow-sm">
+              <div className="space-y-1">
+                <h3 className="font-serif text-lg font-bold text-zinc-900 dark:text-zinc-100 flex items-center space-x-2">
+                  <span className="p-1 rounded bg-amber-500/10 text-amber-500 text-xs">👑 VIP</span>
+                  <span>Registered VIP Profiles Directory</span>
+                </h3>
+                <p className="text-zinc-500 text-xs font-sans">
+                  List of premium club members who authenticated their phone lines and emails via the mobile registration portal.
+                </p>
+              </div>
+
+              <button
+                onClick={fetchProfiles}
+                disabled={profilesLoading}
+                className="py-1.5 px-4 rounded-full border border-zinc-200 dark:border-zinc-800 text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center space-x-1.5 cursor-pointer"
+              >
+                <RefreshCw className={`h-3 w-3 ${profilesLoading ? 'animate-spin' : ''}`} />
+                <span>Synchronize Profiles</span>
+              </button>
+            </div>
+
+            {/* Profiles directory contents */}
+            {profiles.length === 0 ? (
+              <div className="py-16 text-center text-zinc-500 bg-white dark:bg-zinc-900 rounded-3xl border border-rose-100/10 space-y-3 p-6">
+                <span className="text-4xl text-center block">👥</span>
+                <h4 className="font-serif text-base font-bold text-zinc-800 dark:text-zinc-200">No Verified Members yet</h4>
+                <p className="text-xs text-zinc-550 max-w-md mx-auto leading-relaxed">
+                  Have users open the application, click on <strong className="text-pink-600">My Profile 👤</strong> inside their menu bar, and self-validate via simulated GSM OTP carrier to automatically populate this registry!
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {profiles.map((p) => (
+                  <div
+                    key={p.id}
+                    className="relative bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-830 rounded-3xl p-6 shadow-md hover:shadow-lg hover:border-pink-500/20 transition-all text-left flex flex-col justify-between space-y-4"
+                  >
+                    {/* Top line banner */}
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center space-x-3">
+                        <div className="h-10 w-10 bg-gradient-to-tr from-pink-500 to-amber-500 text-white font-serif font-bold text-sm flex items-center justify-center shadow-inner rounded-full shrink-0">
+                          {p.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-serif font-bold text-zinc-900 dark:text-zinc-100">{p.name}</h4>
+                          <span className="text-[9px] font-mono font-bold uppercase py-0.5 px-2 bg-pink-500/10 text-pink-600 dark:text-amber-400 rounded-full">
+                            Member
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-[10px] text-zinc-400 font-mono font-bold bg-zinc-50 dark:bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-100 dark:border-zinc-800">
+                        {p.id}
+                      </div>
+                    </div>
+
+                    {/* Member details */}
+                    <div className="space-y-2.5 pt-3 border-t border-zinc-100 dark:border-zinc-800 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-zinc-400 uppercase text-[9px] font-bold">Email Address</span>
+                        <span className="font-medium text-zinc-750 dark:text-zinc-200 select-all">{p.email}</span>
+                      </div>
+                      
+                      <div className="flex justify-between">
+                        <span className="text-zinc-400 uppercase text-[9px] font-bold">Phone Connection</span>
+                        <span className="font-mono text-zinc-750 dark:text-zinc-200">
+                          ({p.countryCode}) {p.phone}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center">
+                        <span className="text-zinc-400 uppercase text-[9px] font-bold">Country Origin</span>
+                        <span className="flex items-center space-x-1.5 text-zinc-700 dark:text-zinc-300">
+                          <span>{p.countryFlag}</span>
+                          <span>{p.countryName}</span>
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between">
+                        <span className="text-zinc-400 uppercase text-[9px] font-bold">Registered On</span>
+                        <span className="text-zinc-500 font-mono text-[10px]">
+                          {new Date(p.createdAt).toLocaleDateString()} {new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Delete action footer */}
+                    <div className="pt-4 border-t border-zinc-100 dark:border-zinc-805 flex justify-end">
+                      <button
+                        onClick={() => handleDeleteProfile(p.id)}
+                        className="py-1.5 px-3 rounded-xl border border-red-200/50 hover:bg-rose-50/50 dark:hover:bg-red-950/20 text-red-500 text-[10px] uppercase font-bold tracking-wider transition-colors cursor-pointer"
+                        title="Deregister VIP Customer"
+                      >
+                        Deregister Profile
+                      </button>
+                    </div>
+
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

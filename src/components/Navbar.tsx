@@ -10,6 +10,7 @@ interface NavbarProps {
   setIsDarkMode: (dark: boolean) => void;
   onOpenBooking: () => void;
   onOpenAdmin: () => void;
+  onOpenProfile: () => void;
   isAdminLoggedIn: boolean;
   onLogoutAdmin: () => void;
   bookingCount: number;
@@ -24,6 +25,7 @@ export default function Navbar({
   setIsDarkMode,
   onOpenBooking,
   onOpenAdmin,
+  onOpenProfile,
   isAdminLoggedIn,
   onLogoutAdmin,
   bookingCount,
@@ -163,6 +165,15 @@ export default function Navbar({
               </button>
             )}
 
+            {/* VIP Club Profile Button */}
+            <button
+              onClick={onOpenProfile}
+              className="flex items-center space-x-1 py-1.5 px-3.5 rounded-full border border-pink-300/30 dark:border-zinc-850 bg-pink-500/10 hover:bg-pink-500/15 text-pink-600 dark:text-amber-400 font-semibold text-[10px] uppercase tracking-wider transition-all hover:scale-105 cursor-pointer"
+              title="Manage Profile Verification"
+            >
+              <span>My Profile 👤</span>
+            </button>
+
             {/* Core CTA Booking Booking Button */}
             <button
               onClick={onOpenBooking}
@@ -226,22 +237,31 @@ export default function Navbar({
             ))}
           </div>
 
-          <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
-            {isAdminLoggedIn ? (
-              <button onClick={() => { setMobileMenuOpen(false); onOpenAdmin(); }} className="text-xs text-green-500 font-bold bg-green-550/10 py-1.5 px-3 rounded-full">
-                ✓ Admin Panel
+          <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 flex flex-col space-y-3">
+            <div className="flex items-center justify-between">
+              {isAdminLoggedIn ? (
+                <button onClick={() => { setMobileMenuOpen(false); onOpenAdmin(); }} className="text-xs text-green-500 font-bold bg-green-550/10 py-1.5 px-3 rounded-full">
+                  ✓ Admin Panel
+                </button>
+              ) : (
+                <button onClick={() => { setMobileMenuOpen(false); onOpenAdmin(); }} className="text-xs text-zinc-500 font-medium bg-rose-50 dark:bg-zinc-900 py-1.5 px-3 rounded-full">
+                  🔒 Admin Login
+                </button>
+              )}
+
+              <button
+                onClick={() => { setMobileMenuOpen(false); onOpenProfile(); }}
+                className="text-xs text-pink-500 font-bold bg-pink-500/10 py-1.5 px-3.5 rounded-full text-center hover:scale-105 active:scale-95 cursor-pointer"
+              >
+                👤 My Profile
               </button>
-            ) : (
-              <button onClick={() => { setMobileMenuOpen(false); onOpenAdmin(); }} className="text-xs text-zinc-500 font-medium bg-rose-50 dark:bg-zinc-900 py-1.5 px-3 rounded-full">
-                🔒 Admin Login
-              </button>
-            )}
+            </div>
 
             <button
               onClick={() => { setMobileMenuOpen(false); onOpenBooking(); }}
-              className="py-2 px-5 rounded-full bg-gradient-to-r from-pink-500 to-amber-500 text-white font-medium text-[11px] uppercase tracking-wider"
+              className="w-full text-center py-2 px-5 rounded-full bg-gradient-to-r from-pink-500 to-amber-500 text-white font-medium text-[11px] uppercase tracking-wider block"
             >
-              Book Now
+              Book Appointment
             </button>
           </div>
         </div>
