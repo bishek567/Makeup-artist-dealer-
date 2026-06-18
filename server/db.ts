@@ -1,9 +1,31 @@
 import fs from 'fs';
 import path from 'path';
+import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
 import { Service, OfferPackage, Booking, SupportContact, CustomerMessage, DashboardStats, UserProfile } from '../src/types';
+
+// Initialize environment variables
+dotenv.config();
+
+let supabaseUrl = (process.env.SUPABASE_URL || 'https://nbkbwqvohpfvhmzqptfk.supabase.co').trim();
+// Strip leading/trailing single or double quotes
+supabaseUrl = supabaseUrl.replace(/^['"]|['"]$/g, '').trim();
+
+let supabaseKey = (process.env.SUPABASE_ANON_KEY || 'sb_publishable_vIzLhYuTHU1myQBmKcLDbQ_mR9z_9QE').trim();
+supabaseKey = supabaseKey.replace(/^['"]|['"]$/g, '').trim();
+
+console.log('[Supabase Config] URL:', supabaseUrl);
+// Strip trailing rest endpoint /rest/v1 if it exists to keep supabase Client happy
+const formattedUrl = supabaseUrl.replace(/\/rest\/v1\/?$/, '').trim();
+
+// Fallback to default if not a valid HTTP/HTTPS URL to avoid crashing the dev server
+const finalUrl = formattedUrl.match(/^https?:\/\//i) ? formattedUrl : 'https://nbkbwqvohpfvhmzqptfk.supabase.co';
+
+export const supabaseClient = createClient(finalUrl, supabaseKey);
 
 const DB_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DB_DIR, 'db.json');
+
 
 interface DatabaseSchema {
   services: Service[];
@@ -207,6 +229,8 @@ export class Database {
       profiles: []
     };
     this.init();
+    // Fire off async background synchronization from Supabase
+    this.syncFromSupabase();
   }
 
   private init() {
@@ -257,6 +281,89 @@ export class Database {
     }
   }
 
+  // --- Supabase Persistence Methods ---
+  async saveToSupabase(table: string, record: any, id: string) {
+    try {
+      console.log(`[Supabase Sync] Upserting record to '${table}' with ID: ${id}`);
+      // Remove any temporary properties if they are undefined to keep query clean
+      const payload = { ...record };
+      const { error } = await supabaseClient.from(table).upsert(payload);
+      if (error) {
+        console.warn(`[Supabase Sync Warning] Could not sync to table '${table}':`, error.message, error.details || '');
+      } else {
+        console.log(`[Supabase Sync Success] Synergized '${table}' ID: ${id}`);
+      }
+    } catch (err: any) {
+      console.error(`[Supabase Sync Connection Error] on table '${table}':`, err.message || err);
+    }
+  }
+
+  async deleteFromSupabase(table: string, id: string) {
+    try {
+      console.log(`[Supabase Sync] Deleting record from '${table}' with ID: ${id}`);
+      const { error } = await supabaseClient.from(table).delete().eq('id', id);
+      if (error) {
+        console.warn(`[Supabase Sync Warning] Could not remote-delete from table '${table}':`, error.message);
+      } else {
+        console.log(`[Supabase Sync Success] Remote deleted from '${table}' ID: ${id}`);
+      }
+    } catch (err: any) {
+      console.error(`[Supabase Sync Connection Error] on deleting '${table}':`, err.message || err);
+    }
+  }
+
+  async syncFromSupabase() {
+    console.log('[Supabase Sync Start] Downloading existing tables...');
+    const tables = ['services', 'packages', 'bookings', 'contacts', 'messages', 'profiles'];
+    let syncCount = 0;
+
+    for (const table of tables) {
+      try {
+        const { data, error } = await supabaseClient.from(table).select('*');
+        if (error) {
+          console.warn(`[Supabase Sync Info] Table '${table}' could not be queried (it may not exist yet):`, error.message);
+          continue;
+        }
+
+        if (data && data.length > 0) {
+          console.log(`[Supabase Sync] Fetched ${data.length} records for '${table}' from Supabase.`);
+          
+          // Custom parsing for compatibility
+          const parsedData = data.map(item => {
+            if (table === 'packages' && typeof item.services === 'string') {
+              try {
+                item.services = JSON.parse(item.services);
+              } catch {
+                item.services = [item.services];
+              }
+            }
+            return item;
+          });
+
+          (this.data as any)[table] = parsedData;
+          syncCount++;
+        } else {
+          // Supabase table is empty: let's seed our high quality initial data up to their cloud!
+          console.log(`[Supabase Seed] Supabase table '${table}' is empty. Seeding local initial data...`);
+          const localItems = (this.data as any)[table] || [];
+          if (localItems.length > 0) {
+            for (const item of localItems) {
+              await this.saveToSupabase(table, item, item.id);
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error(`[Supabase Sync Error] Table sync failed for '${table}':`, err.message || err);
+      }
+    }
+
+    if (syncCount > 0) {
+      console.log(`[Supabase Sync Completed] Local database cached with ${syncCount} active cloud tables.`);
+      this.save();
+    }
+  }
+
+
   // --- Services CRUD ---
   getServices(): Service[] {
     return this.data.services;
@@ -269,6 +376,7 @@ export class Database {
     };
     this.data.services.push(newService);
     this.save();
+    this.saveToSupabase('services', newService, newService.id);
     return newService;
   }
 
@@ -277,6 +385,7 @@ export class Database {
     if (idx === -1) return null;
     this.data.services[idx] = { ...this.data.services[idx], ...updated };
     this.save();
+    this.saveToSupabase('services', this.data.services[idx], id);
     return this.data.services[idx];
   }
 
@@ -285,6 +394,7 @@ export class Database {
     this.data.services = this.data.services.filter(s => s.id !== id);
     if (this.data.services.length < lengthBefore) {
       this.save();
+      this.deleteFromSupabase('services', id);
       return true;
     }
     return false;
@@ -302,6 +412,7 @@ export class Database {
     };
     this.data.packages.push(newPkg);
     this.save();
+    this.saveToSupabase('packages', newPkg, newPkg.id);
     return newPkg;
   }
 
@@ -310,6 +421,7 @@ export class Database {
     if (idx === -1) return null;
     this.data.packages[idx] = { ...this.data.packages[idx], ...updated };
     this.save();
+    this.saveToSupabase('packages', this.data.packages[idx], id);
     return this.data.packages[idx];
   }
 
@@ -318,6 +430,7 @@ export class Database {
     this.data.packages = this.data.packages.filter(p => p.id !== id);
     if (this.data.packages.length < lengthBefore) {
       this.save();
+      this.deleteFromSupabase('packages', id);
       return true;
     }
     return false;
@@ -336,6 +449,7 @@ export class Database {
     };
     this.data.bookings.push(newBooking);
     this.save();
+    this.saveToSupabase('bookings', newBooking, newBooking.id);
     return newBooking;
   }
 
@@ -347,6 +461,7 @@ export class Database {
       this.data.bookings[idx].paymentStatus = paymentStatus;
     }
     this.save();
+    this.saveToSupabase('bookings', this.data.bookings[idx], id);
     return this.data.bookings[idx];
   }
 
@@ -355,6 +470,7 @@ export class Database {
     this.data.bookings = this.data.bookings.filter(b => b.id !== id);
     if (this.data.bookings.length < lengthBefore) {
       this.save();
+      this.deleteFromSupabase('bookings', id);
       return true;
     }
     return false;
@@ -372,6 +488,7 @@ export class Database {
     };
     this.data.contacts.push(newContact);
     this.save();
+    this.saveToSupabase('contacts', newContact, newContact.id);
     return newContact;
   }
 
@@ -380,6 +497,7 @@ export class Database {
     if (idx === -1) return null;
     this.data.contacts[idx] = { ...this.data.contacts[idx], ...updated };
     this.save();
+    this.saveToSupabase('contacts', this.data.contacts[idx], id);
     return this.data.contacts[idx];
   }
 
@@ -388,6 +506,7 @@ export class Database {
     this.data.contacts = this.data.contacts.filter(c => c.id !== id);
     if (this.data.contacts.length < lengthBefore) {
       this.save();
+      this.deleteFromSupabase('contacts', id);
       return true;
     }
     return false;
@@ -407,6 +526,7 @@ export class Database {
     };
     this.data.messages.push(newMessage);
     this.save();
+    this.saveToSupabase('messages', newMessage, newMessage.id);
     return newMessage;
   }
 
@@ -415,6 +535,7 @@ export class Database {
     if (idx === -1) return false;
     this.data.messages[idx].status = 'read';
     this.save();
+    this.saveToSupabase('messages', this.data.messages[idx], id);
     return true;
   }
 
@@ -423,6 +544,7 @@ export class Database {
     this.data.messages = this.data.messages.filter(m => m.id !== id);
     if (this.data.messages.length < lengthBefore) {
       this.save();
+      this.deleteFromSupabase('messages', id);
       return true;
     }
     return false;
@@ -444,6 +566,7 @@ export class Database {
     }
     this.data.profiles.push(newProfile);
     this.save();
+    this.saveToSupabase('profiles', newProfile, newProfile.id);
     return newProfile;
   }
 
@@ -453,6 +576,7 @@ export class Database {
     this.data.profiles = this.data.profiles.filter(p => p.id !== id);
     if (this.data.profiles.length < initialLen) {
       this.save();
+      this.deleteFromSupabase('profiles', id);
       return true;
     }
     return false;

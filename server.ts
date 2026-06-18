@@ -1,6 +1,11 @@
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import crypto from 'crypto';
+import dotenv from 'dotenv';
+
+// Initialize environment variables ASAP
+dotenv.config();
+
 import { createServer as createViteServer } from 'vite';
 import { dbInstance } from './server/db';
 import { Booking, Service, OfferPackage, SupportContact } from './src/types';
